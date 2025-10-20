@@ -1,59 +1,253 @@
-﻿@inherits LayoutComponentBase
+﻿@page "/"
+@using kreddit_app.Data
+@inject ApiService Api
+@inject NavigationManager Nav
 
-@using kreddit_app.Data;
-@using shared.Model;
-@inject ApiService apiService
+<div class="container py-4" style="max-width: 900px;">
 
-@using Microsoft.Extensions.Configuration
-@inject IConfiguration Configuration
+   
 
-@if (posts == null)
-{
-    <p><em>Loading...</em></p>
-}
-else
-{
-    <table>
-        <tr>
-            <th>Title</th>
-            <th>Content</th>
-            <th colspan="3">Votes</th>
-        </tr>
-        @foreach (var post in posts)
+    <!-- Search + Sort -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <input class="form-control bg-dark text-light border-secondary me-2"
+               placeholder="Search posts..." style="max-width: 300px;"
+               value="@searchTerm"
+               @oninput="OnSearchInput" />
+
+        <select class="form-select bg-dark text-light border-secondary form-select-sm"
+                style="width: 150px"
+                value="@sortOption"
+                @onchange="OnSortChange">
+            <option value="new">Newest</option>
+            <option value="top">Top</option>
+            <option value="old">Oldest</option>
+        </select>
+    </div>
+
+    <!-- Posts -->
+    @if (isLoading)
+    {
+        <div class="text-center text-secondary mt-5">
+            <div class="spinner-border text-primary mb-3"></div>
+            <p>Loading posts...</p>
+        </div>
+    }
+    else if (loadError)
+    {
+        <div class="alert alert-danger bg-dark text-light border-danger">
+            Failed to load posts. Please try again later.
+        </div>
+    }
+    else if (posts == null || posts.Count == 0)
+    {
+        <div class="alert alert-info bg-dark text-light border-secondary">
+            No posts found. Be the first to share something!
+        </div>
+    }
+    else
+    {
+        @foreach (var p in posts)
         {
-            <tr>
-                <!-- 
-                    These a href links will match the route in the page 'PostItem.razor'.
-                    The route is defined as "/post/{id}" and the id is the post id.
-                -->
-                <td><a href="/post/@post.Id">@post.Title</a></td>
-                <td>@post.Content</td>
-                <td>@(post.Upvotes - post.Downvotes)</td>
-                <td><button @onclick="() => Upvote(post.Id)">Upvote</button></td>
-                <td><button @onclick="() => Downvote(post.Id)">Downvote</button></td>
-            </tr>
-        }
-    </table>
+            <div class="card-dark mb-3 post-card" @onclick="() => OpenPost(p.Id)">
+                <div class="d-flex align-items-start p-3">
+                    <!-- Votes -->
+                    <div class="d-flex flex-column align-items-center me-3">
+                        <button class="vote-btn up @(p.UserVote == 1 ? "active" : "")"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => Vote(p, +1)">
+                            <i class="bi bi-arrow-up"></i>
+                        </button>
+                        <span class="fw-bold text-light">@p.Score</span>
+                        <button class="vote-btn down @(p.UserVote == -1 ? "active" : "")"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => Vote(p, -1)">
+                            <i class="bi bi-arrow-down"></i>
+                        </button>
+                    </div>
 
-    <br/>
-}
+                    <!-- Post Content -->
+                    <div class="flex-fill">
+                        <h5 class="fw-semibold mb-1 text-light">@p.Title</h5>
+
+                        @if (!string.IsNullOrWhiteSpace(p.Text))
+                        {
+                            <p class="text-muted mb-2 clamp-2">@p.Text</p>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(p.Url))
+                        {
+                            <a href="@p.Url" target="_blank" class="text-decoration-none">
+                                <span class="text-primary">@p.Url</span>
+                            </a>
+                        }
+
+                        <small class="text-secondary">
+                            by <strong>@p.Author</strong> • @FormatLocal(p.CreatedAt)
+                        </small>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .card-dark {
+        background-color: #1a1a1b;
+        border: 1px solid #2a2a2c;
+        border-radius: 8px;
+        transition: .25s ease-in-out;
+    }
+
+    .post-card:hover {
+        transform: translateY(-3px);
+        border-color: #4fa3ff;
+        box-shadow: 0 3px 12px rgba(0,0,0,.45);
+        cursor: pointer;
+    }
+
+    .vote-btn {
+        background: none;
+        border: none;
+        color: #818384;
+        font-size: 1.1rem;
+        transition: .15s;
+    }
+
+        .vote-btn:hover {
+            color: #ff7b00;
+            transform: translateY(-2px);
+        }
+
+        .vote-btn.down:hover {
+            color: #4fa3ff;
+            transform: translateY(2px);
+        }
+
+        .vote-btn.up.active {
+            color: #ff4500;
+            text-shadow: 0 0 6px rgba(255,68,0,.5);
+        }
+
+        .vote-btn.down.active {
+            color: #4fa3ff;
+            text-shadow: 0 0 6px rgba(79,163,255,.5);
+        }
+
+    .clamp-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .form-control::placeholder {
+        color: #bbb;
+    }
+</style>
 
 @code {
-    private Post[]? posts;
-    private Post? votePost;
+    private List<PostListDto> posts = new();
+
+    private string sortOption = "new";   // "new" | "top" | "old"
+    private string searchTerm = "";
+
+    private bool isLoading = true;
+    private bool loadError = false;
+
+    private CancellationTokenSource? _debounce;
 
     protected override async Task OnInitializedAsync()
     {
-        posts = await apiService.GetPosts();
+        await LoadFromApiAsync(); // initial load (ingen søgning)
     }
 
-    private async void Upvote(int id)
+    private async Task LoadFromApiAsync()
     {
-        var updatedPost = await apiService.UpvotePost(id);
+        isLoading = true; loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var list = await Api.GetPostsAsync(string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm)
+                      ?? new List<PostListDto>();
+
+            posts = ApplySort(list);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"❌ Failed to load posts: {ex}");
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
     }
 
-    private async void Downvote(int id)
+    private List<PostListDto> ApplySort(IEnumerable<PostListDto> input)
+        => sortOption switch
+        {
+            "top" => input.OrderByDescending(p => p.Score).ToList(),
+            "old" => input.OrderBy(p => p.CreatedAt).ToList(),
+            _ => input.OrderByDescending(p => p.CreatedAt).ToList()
+        };
+
+    private async Task Vote(PostListDto post, int delta)
     {
-        Console.WriteLine("Not implemented 😪");
+        if (post is null) return;
+
+        var prevScore = post.Score;
+        var prevVote = post.UserVote;
+
+        post.Score += delta;
+        post.UserVote = delta;
+
+        try
+        {
+            await Api.VotePostAsync(post.Id, delta);
+        }
+        catch (Exception ex)
+        {
+            post.Score = prevScore;
+            post.UserVote = prevVote;
+            Console.Error.WriteLine($"⚠️ Vote failed: {ex.Message}");
+        }
     }
+
+    private void OpenPost(int id) => Nav.NavigateTo($"/post/{id}");
+    private void GoToCreate() => Nav.NavigateTo("/create");
+
+    private void OnSortChange(ChangeEventArgs e)
+    {
+        sortOption = e.Value?.ToString() ?? "new";
+        posts = ApplySort(posts);
+    }
+
+    // Debounced søgning: vent 250 ms før API-kald
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? "";
+
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(250, token);
+                await InvokeAsync(async () => await LoadFromApiAsync());
+            }
+            catch (TaskCanceledException) { /* ignorer */ }
+        }, token);
+    }
+
+    // --- Tidsformat helpers: antag at datoer i DB er UTC ---
+    private static DateTime AsUtc(DateTime dt)
+        => DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+
+    private static string FormatLocal(DateTime dt)
+        => AsUtc(dt).ToLocalTime().ToString("dd.MM.yyyy HH:mm");
 }

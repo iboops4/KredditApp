@@ -1,80 +1,274 @@
-﻿<!-- 
-Notice how this route has a route parameter 'id'. This is how we can pass data to the route.
-See how the links are made in 'PostList.razor'.
--->
-@page "/post/{id}"
+﻿@page "/post/{id:int}"
+@using kreddit_app.Data
+@inject ApiService Api
+@inject NavigationManager Nav
 
-@using kreddit_app.Data;
-@using shared.Model;
-@inject ApiService apiService
+<div class="container py-4" style="max-width: 900px;">
+    <a href="/" class="text-decoration-none text-primary mb-3 d-inline-flex align-items-center">
+        ← Back to home
+    </a>
 
-<PageTitle>Kreddit</PageTitle>
+    @if (isLoading)
+    {
+        <div class="text-center text-secondary mt-5">
+            <div class="spinner-border text-primary mb-3"></div>
+            <p>Loading post...</p>
+        </div>
+    }
+    else if (loadError)
+    {
+        <div class="alert alert-danger">Failed to load post. Please try again.</div>
+    }
+    else if (Post is null)
+    {
+        <div class="alert alert-warning">Post not found.</div>
+    }
+    else
+    {
+        <!-- Post card -->
+        <div class="card-dark mb-4">
+            <div class="d-flex align-items-start p-3">
+                <!-- Votes -->
+                <div class="d-flex flex-column align-items-center me-3">
+                    <button class="vote-btn up" @onclick="() => VotePost(+1)">
+                        <i class="bi bi-arrow-up"></i>
+                    </button>
+                    <span class="fw-bold text-light">@Post.Score</span>
+                    <button class="vote-btn down" @onclick="() => VotePost(-1)">
+                        <i class="bi bi-arrow-down"></i>
+                    </button>
+                </div>
+
+                <!-- Content -->
+                <div class="flex-fill">
+                    <h4 class="fw-semibold mb-1 text-light">@Post.Title</h4>
+
+                    @if (!string.IsNullOrWhiteSpace(Post.Text))
+                    {
+                        <p class="text-muted mb-2">@Post.Text</p>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(Post.Url))
+                    {
+                        <a href="@Post.Url" target="_blank" class="text-decoration-none">
+                            <span class="link-primary">@Post.Url</span>
+                        </a>
+                    }
+
+                    <small class="text-secondary">
+                        by <strong>@Post.Author</strong> • @TimeAgo(Post.CreatedAt)
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comments -->
+        <h5 class="text-light mb-3">Comments (@(Post.Comments?.Count ?? 0))</h5>
+
+        @if (Post.Comments is { Count: > 0 })
+        {
+            @foreach (var c in Post.Comments!.OrderByDescending(x => x.CreatedAt))
+            {
+                <div class="card-dark mb-3">
+                    <div class="d-flex align-items-start p-3">
+                        <!-- Comment votes -->
+                        <div class="d-flex flex-column align-items-center me-3">
+                            <button class="vote-btn up" @onclick="() => VoteComment(c.Id, +1)">
+                                <i class="bi bi-arrow-up"></i>
+                            </button>
+                            <span class="fw-bold text-light" style="font-size:.95rem">@c.Score</span>
+                            <button class="vote-btn down" @onclick="() => VoteComment(c.Id, -1)">
+                                <i class="bi bi-arrow-down"></i>
+                            </button>
+                        </div>
+
+                        <div class="flex-fill">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong class="text-light">@c.Author</strong>
+                                    <div class="small text-secondary">@TimeAgo(c.CreatedAt)</div>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-light">@c.Text</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="alert alert-secondary text-light bg-transparent border-secondary">
+                No comments yet. Be the first to say something.
+            </div>
+        }
+
+        <!-- Add comment -->
+        <div class="card-dark p-3 mt-4">
+            <h6 class="text-light mb-3">Write a comment</h6>
+
+            <div class="mb-2">
+                <input class="form-control bg-dark text-light border-secondary"
+                       placeholder="Your name"
+                       @bind="newCommentAuthor" />
+            </div>
+            <div class="mb-3">
+                <textarea class="form-control bg-dark text-light border-secondary"
+                          placeholder="Content"
+                          rows="3"
+                          @bind="newCommentText"></textarea>
+            </div>
+            <button class="btn btn-primary w-100"
+                    @onclick="CreateComment"
+                    disabled="@isPostingComment">
+                @(isPostingComment ? "Posting..." : "Post comment")
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(commentError))
+            {
+                <div class="alert alert-danger mt-3 mb-0">@commentError</div>
+            }
+        </div>
+    }
+</div>
 
 <style>
-div.contents {
-  background-color: #f2f0eb;
-  width: 600px;
-  border: 2px solid #452d3d;
-  padding: 10px;
-  margin-top: 20px;
-}
+    .card-dark {
+        background-color: #161b22;
+        border: 1px solid #2a2a2c;
+        border-radius: 10px;
+        transition: .2s ease-in-out;
+    }
+    .card-dark:hover { border-color: #4fa3ff; }
+
+    .vote-btn {
+        background: none;
+        border: none;
+        color: #8a8a8a;
+        font-size: 1.1rem;
+        transition: .15s;
+    }
+    .vote-btn:hover { color: #ff7b00; transform: translateY(-1px); }
+    .vote-btn.down:hover { color: #0d6efd; transform: translateY(1px); }
 </style>
 
-@if (Post == null)
-{
-    <p><em>Loading...</em></p>
-}
-else
-{
-    <div class="contents">
-        <h4>@Post.Title</h4>
-        <p><strong>User: @Post.User.Username, Votes: @(Post.Upvotes - Post.Downvotes)</strong></p>
-        <p>@Post.Content</p>
-    </div>
-
-    <div class="contents">
-    <h4>Comments</h4>
-    <table>
-        <tr>
-            <th>User</th>
-            <th>Comment</th>
-            <th colspan="3">Votes</th>
-        </tr>
-        @foreach (var comment in Post.Comments)
-        {
-            <tr>
-                <td>@comment.User.Username</td>
-                <td>@comment.Content</td>
-                <td>@(comment.Upvotes - comment.Downvotes)</td>
-                <td><button @onclick="() => Upvote(comment.Id)">Upvote</button></td>
-                <td><button @onclick="() => Downvote(comment.Id)">Downvote</button></td>
-            </tr>
-        }
-    </table>
-    </div>
-
-    <!-- This demonstrates how to pass in PostId to the component 'CreateComment'. See how 
-         it is used in the file CreateComment.razor -->
-    <CreateComment PostId=@PostId></CreateComment>
-}
-
 @code {
-    [Parameter]
-    public string Id { get; set; }
-    public int PostId { get { return int.Parse(Id); } }
-    public Post Post { get; set; }
+    [Parameter] public int id { get; set; }
+
+    private PostDetailDto? Post;
+    private bool isLoading = true;
+    private bool loadError = false;
+
+    private string newCommentAuthor = "";
+    private string newCommentText = "";
+    private bool isPostingComment = false;
+    private string? commentError;
 
     protected override async Task OnInitializedAsync()
     {
-        Post = await apiService.GetPost(PostId);
-    }
-    private async void Upvote(int id)
-    {
-        Console.WriteLine("Not implemented 😪");
+        try
+        {
+            Post = await Api.GetPostAsync(id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Load post failed: {ex.Message}");
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
-    private async void Downvote(int id)
+    private async Task VotePost(int delta)
     {
-        Console.WriteLine("Not implemented 😪");
+        if (Post is null) return;
+
+        // Optimistic update
+        Post.Score += delta;
+        try
+        {
+            await Api.VotePostAsync(Post.Id, delta);
+        }
+        catch
+        {
+            Post.Score -= delta; // rollback ved fejl
+        }
+        StateHasChanged();
     }
+
+    private async Task VoteComment(int commentId, int delta)
+    {
+        var c = Post?.Comments?.FirstOrDefault(x => x.Id == commentId);
+        if (c is null) return;
+
+        // Optimistic update på Score (ikke Votes, da Votes er read-only helper)
+        c.Score += delta;
+        try
+        {
+            await Api.VoteCommentAsync(commentId, delta);
+        }
+        catch
+        {
+            c.Score -= delta; // rollback ved fejl
+        }
+        StateHasChanged();
+    }
+
+    private async Task CreateComment()
+    {
+        commentError = null;
+
+        if (string.IsNullOrWhiteSpace(newCommentAuthor) || string.IsNullOrWhiteSpace(newCommentText))
+        {
+            commentError = "Name and content are required.";
+            return;
+        }
+        if (Post is null || isPostingComment) return;
+
+        isPostingComment = true;
+        try
+        {
+            var ok = await Api.CreateCommentAsync(new CreateCommentRequest
+            {
+                PostId = Post.Id,
+                Author = newCommentAuthor,
+                Content = newCommentText
+            });
+
+            if (!ok)
+            {
+                commentError = "Could not post comment.";
+            }
+            else
+            {
+                // Hent opdateret post efter succes
+                Post = await Api.GetPostAsync(Post.Id);
+                newCommentAuthor = "";
+                newCommentText = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            commentError = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isPostingComment = false;
+        }
+    }
+
+private static string TimeAgo(DateTime dt)
+{
+    // Antag at backend sender UTC
+    var then = new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
+    var ts = DateTimeOffset.UtcNow - then;
+
+    if (ts.TotalSeconds < 10) return "just now";
+    if (ts.TotalSeconds < 60) return $"{(int)ts.TotalSeconds}s ago";
+    if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes} min ago";
+    if (ts.TotalHours   < 24) return $"{(int)ts.TotalHours} h ago";
+    if (ts.TotalDays    < 7)  return $"{(int)ts.TotalDays} d ago";
+    return then.LocalDateTime.ToString("dd.MM.yyyy HH:mm");
+}
+
 }

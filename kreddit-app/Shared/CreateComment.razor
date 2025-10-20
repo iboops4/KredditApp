@@ -1,27 +1,92 @@
-@using kreddit_app.Data;
+@using kreddit_app.Data
 @inject ApiService apiService
 
-<div>
-    <br/>
-    <h3>Write a comment</h3>
-    <input placeholder="Content" type="input" id="content" @bind-value="content"/>
-    <button id="createPostButton" type="button" @onclick="CreateNewComment">Post comment</button>
+<div class="card" style="max-width:800px">
+    <div class="card-body">
+        <h5 class="card-title mb-3">Write a comment</h5>
+
+        <div class="mb-2">
+            <input class="form-control"
+                   placeholder="Your name"
+                   @bind="author"
+                   @bind:event="oninput"
+                   autofocus />
+        </div>
+
+        <div class="mb-3">
+            <textarea class="form-control"
+                      placeholder="Content"
+                      rows="3"
+                      @bind="content"
+                      @bind:event="oninput"
+                      @onkeydown="HandleEnter"></textarea>
+        </div>
+
+        <button class="btn btn-primary"
+                disabled="@isPosting"
+                @onclick="CreateNewComment">
+            @(isPosting ? "Posting..." : "Post comment")
+        </button>
+
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="mt-2 @(error ? "text-danger" : "text-success")">@message</div>
+        }
+    </div>
 </div>
 
 @code {
+    [Parameter] public int PostId { get; set; }
+    [Parameter] public EventCallback OnSubmitted { get; set; }
 
-    // PostId is passed in from the parent component. See how in PostItem.razor.
-    [Parameter]
-    public int PostId { get; set; }
+    private string? author;
     private string? content;
-    private async void CreateNewComment()
+    private bool isPosting = false;
+    private string? message;
+    private bool error;
+
+    private async Task CreateNewComment()
     {
-        if (content == null)
+        // simpel validering
+        if (string.IsNullOrWhiteSpace(content))
         {
+            error = true;
+            message = "Write something first.";
             return;
         }
-        // TODO: Provide list of users from dropdown, or maybe just convert
-        // from username to UserId
-        await apiService.CreateComment(content, PostId, 2); // UserId: 2
+
+        isPosting = true;
+        error = false;
+        message = null;
+
+        // (postId, author, text)
+        var ok = await apiService.CreateComment(PostId,
+            string.IsNullOrWhiteSpace(author) ? "Ibrahim" : author!.Trim(),
+            content!.Trim());
+
+        isPosting = false;
+
+        if (ok)
+        {
+            author = author; // behold navnet til næste kommentar
+            content = "";
+            message = "Comment posted.";
+            if (OnSubmitted.HasDelegate)
+                await OnSubmitted.InvokeAsync();
+        }
+        else
+        {
+            error = true;
+            message = "Failed to post comment.";
+        }
+    }
+
+    // Enter = submit, Shift+Enter = linjeskift
+    private async Task HandleEnter(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !isPosting)
+        {
+            await CreateNewComment();
+        }
     }
 }

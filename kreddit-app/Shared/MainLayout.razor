@@ -1,13 +1,14 @@
 ﻿@inherits LayoutComponentBase
 
-<div class="page">
-    <main>
-        <div class="top-row px-4">
-            <a href="https://github.com/kdorland" target="_blank">About</a>
-        </div>
+<NavBar OnSearchChanged="HandleSearch" />
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
+<div class="main-content pt-5 mt-4">
+    @Body
 </div>
+
+@code {
+    private void HandleSearch(string term)
+    {
+        // videresendes til PostList via global state (vi håndterer i PostList)
+    }
+}

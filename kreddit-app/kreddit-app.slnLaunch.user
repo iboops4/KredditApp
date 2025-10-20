@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "New Profile",
+    "Projects": [
+      {
+        "Path": "kreddit-app.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "..\\Server\\Server.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

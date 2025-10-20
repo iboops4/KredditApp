@@ -1,0 +1,52 @@
+﻿@using Microsoft.AspNetCore.Components
+@inject NavigationManager Nav
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm fixed-top">
+    <div class="container-fluid px-4">
+        <!-- Logo -->
+        <a class="navbar-brand fw-bold text-white" href="/" style="font-size:1.3rem;">
+            <i class="bi bi-reddit"></i> Kreddit
+        </a>
+
+        
+
+        <!-- Right side -->
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-primary" @onclick="GoToCreate">
+                <i class="bi bi-plus-circle me-1"></i> Create Post
+            </button>
+        </div>
+    </div>
+</nav>
+
+<style>
+    /* Behold mørk navbar */
+    .navbar {
+        backdrop-filter: blur(8px);
+        background-color: rgba(20, 20, 20, 0.85) !important;
+    }
+
+    input.form-control::placeholder {
+        color: #bbb;
+    }
+
+    /* Global dark theme – uden toggle */
+    body {
+        background-color: #0d1117;
+        color: #e6edf3;
+    }
+</style>
+
+@code {
+    [Parameter] public EventCallback<string> OnSearchChanged { get; set; }
+
+    private string searchTerm = "";
+
+    private void GoToCreate() => Nav.NavigateTo("/create");
+
+    private async Task OnSearch(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? "";
+        await OnSearchChanged.InvokeAsync(searchTerm);
+    }
+}

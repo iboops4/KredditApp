@@ -1,0 +1,187 @@
+﻿@page "/create"
+@using kreddit_app.Data
+@inject ApiService Api
+@inject NavigationManager Nav
+
+<div class="container py-5 d-flex flex-column align-items-center" style="max-width: 700px;">
+    <a href="/" class="text-decoration-none text-primary mb-4 align-self-start">
+        <i class="bi bi-arrow-left me-2"></i> Back to home
+    </a>
+
+    <div class="card-dark p-4 shadow-lg w-100 animate-fade-in">
+        <h4 class="fw-bold mb-4 text-center text-light">
+            ✨ Create a new post
+        </h4>
+
+        <div class="mb-3">
+            <label class="form-label text-secondary">Title</label>
+            <input type="text"
+                   class="form-control bg-dark text-light border-secondary"
+                   placeholder="Enter title..."
+                   autocomplete="off"
+                   @bind="title" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label text-secondary">Text (optional)</label>
+            <textarea class="form-control bg-dark text-light border-secondary"
+                      style="height:120px;"
+                      placeholder="Write something..."
+                      @bind="text"></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label text-secondary">URL (optional)</label>
+            <input type="url"
+                   class="form-control bg-dark text-light border-secondary"
+                   placeholder="https://..."
+                   autocomplete="off"
+                   @bind="url" />
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label text-secondary">Author</label>
+            <input type="text"
+                   class="form-control bg-dark text-light border-secondary"
+                   placeholder="Your name"
+                   autocomplete="off"
+                   @bind="author" />
+        </div>
+
+        <div class="d-grid">
+            <button class="btn btn-primary py-2 fw-semibold shadow-sm"
+                    @onclick="SubmitPost"
+                    disabled="@isSubmitting">
+                @if (isSubmitting)
+                {
+                    <span class="d-inline-flex align-items-center">
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        Posting...
+                    </span>
+                }
+                else
+                {
+                    <span>Post</span>
+                }
+            </button>
+        </div>
+
+        @if (errorMessage is not null)
+        {
+            <div class="alert alert-danger mt-3 mb-0 text-center">@errorMessage</div>
+        }
+    </div>
+</div>
+
+<style>
+    /* Global dark bg (flyt gerne til app.css hvis du foretrækker globalt) */
+    body {
+        background-color: #0d1117;
+        color: #e6edf3;
+    }
+
+    .card-dark {
+        background-color: #161b22;
+        border: 1px solid #2a2a2c;
+        border-radius: 12px;
+        transition: 0.25s ease-in-out;
+    }
+
+        .card-dark:hover {
+            border-color: #4fa3ff;
+            box-shadow: 0 3px 16px rgba(0, 0, 0, 0.5);
+        }
+
+    .form-control::placeholder {
+        color: #aaa;
+    }
+
+    .form-label {
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .btn-primary {
+        background-color: #007bff;
+        border: none;
+        transition: 0.2s ease-in-out;
+    }
+
+        .btn-primary:hover {
+            background-color: #3399ff;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(51, 153, 255, 0.4);
+        }
+
+    .alert-danger {
+        background-color: #2d1b1b;
+        border: 1px solid #ff5555;
+        color: #ffaaaa;
+    }
+
+    
+    .animate-fade-in {
+        animation: fadeIn 0.4s ease-in-out;
+    }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
+@code {
+    private string title = "";
+    private string text = "";
+    private string url = "";
+    private string author = "";
+    private bool isSubmitting = false;
+    private string? errorMessage;
+
+    private async Task SubmitPost()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(author))
+        {
+            errorMessage = "Title and Author are required.";
+            return;
+        }
+
+        if (isSubmitting) return;
+        isSubmitting = true;
+
+        try
+        {
+            bool success = await Api.CreatePost(
+                title,
+                author,
+                text,
+                string.IsNullOrWhiteSpace(url) ? null : url);
+
+            if (success)
+            {
+                Nav.NavigateTo("/");
+            }
+            else
+            {
+                errorMessage = "Something went wrong. Could not create the post.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}
